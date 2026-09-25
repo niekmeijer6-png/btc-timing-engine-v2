@@ -36,9 +36,20 @@ def funding(): return float(api('/public/funding-rate',{'instId':INST})[0]['fund
 def oi(): return float(api('/public/open-interest',{'instType':'SWAP','instId':INST})[0].get('oiCcy') or 0)
 def book():
     d=api('/market/books',{'instId':INST,'sz':'30'})[0]
-    b=pd.DataFrame(d['bids'],columns=['px','sz','orders']); a=pd.DataFrame(d['asks'],columns=['px','sz','orders'])
-    for x in [b,a]: x[['px','sz']]=x[['px','sz']].astype(float)
-    return b,a
+
+    # OKX orderbook levels can contain 4 fields depending on API response.
+    # NOVA only needs price and size, so keep the first two fields safely.
+    def parse_levels(levels):
+        rows=[]
+        for row in levels:
+            if len(row) >= 2:
+                rows.append([row[0], row[1]])
+        frame=pd.DataFrame(rows,columns=['px','sz'])
+        frame['px']=pd.to_numeric(frame['px'],errors='coerce')
+        frame['sz']=pd.to_numeric(frame['sz'],errors='coerce')
+        return frame.dropna().reset_index(drop=True)
+
+    return parse_levels(d['bids']), parse_levels(d['asks'])
 def trades():
     d=pd.DataFrame(api('/market/trades',{'instId':INST,'limit':'100'}))
     if d.empty:return d
